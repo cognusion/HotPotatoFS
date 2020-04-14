@@ -3,6 +3,7 @@ package HotPotatoFS
 import (
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
+	"context"
 	"github.com/golang/groupcache"
 	"io/ioutil"
 	"log"
@@ -22,7 +23,7 @@ func ServeDir(mountpoint string, target string, limit int, me string, peerlist [
 	}
 
 	filecache = groupcache.NewGroup("filecache", int64(limit)<<20, groupcache.GetterFunc(
-		func(ctx groupcache.Context, key string, dest groupcache.Sink) error {
+		func(ctx context.Context, key string, dest groupcache.Sink) error {
 			contents, err := ioutil.ReadFile(key)
 			dest.SetBytes(contents)
 			return err
@@ -41,7 +42,7 @@ type TargetDir struct {
 	Path string
 }
 
-func (nf TargetDir) Root() (fs.Node, fuse.Error) {
+func (nf TargetDir) Root() (fs.Node, error) {
 	return Dir{Node{Path: nf.Path}}, nil
 }
 
@@ -49,21 +50,24 @@ type Node struct {
 	Path string
 }
 
-func (n Node) Attr() fuse.Attr {
+func (n Node) Attr(ctx context.Context, attr *fuse.Attr) error {
 	s, err := os.Stat(n.Path)
 	if err != nil {
-		log.Print(err)
-		return fuse.Attr{}
+		return err
 	}
 
-	return fuse.Attr{Size: uint64(s.Size()), Mtime: s.ModTime(), Mode: s.Mode()}
+	attr.Size = uint64(s.Size())
+	attr.Mtime = s.ModTime()
+	attr.Mode = s.Mode()
+	return nil
 }
 
 type Dir struct {
 	Node
 }
 
-func (d Dir) Lookup(name string, intr fs.Intr) (fs fs.Node, error fuse.Error) {
+func (d Dir) Lookup(name string) (fs.Node, error) {
+	var fs fs.Node
 
 	path := filepath.Join(d.Path, name)
 	s, err := os.Stat(path)
@@ -81,10 +85,10 @@ func (d Dir) Lookup(name string, intr fs.Intr) (fs fs.Node, error fuse.Error) {
 		fs = node
 	}
 
-	return
+	return fs, nil
 }
 
-func (d Dir) ReadDir(intr fs.Intr) ([]fuse.Dirent, fuse.Error) {
+func (d Dir) ReadDir() ([]fuse.Dirent, error) {
 	var out []fuse.Dirent
 	files, err := ioutil.ReadDir(d.Path)
 	if err != nil {
@@ -109,7 +113,7 @@ type File struct {
 	Node
 }
 
-func (f File) ReadAll(intr fs.Intr) ([]byte, fuse.Error) {
+func (f File) ReadAll() ([]byte, error) {
 	var contents []byte
 	err := filecache.Get(nil, f.Path, groupcache.AllocatingByteSliceSink(&contents))
 	if err != nil {

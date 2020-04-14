@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/csv"
 	"flag"
-	"github.com/ryanbressler/HotPotatoFS"
+	"github.com/cognusion/HotPotatoFS"
 	"io"
 	"log"
 	"os"
